@@ -12,7 +12,7 @@ class GameView(context: Context, attrs: AttributeSet): View(context, attrs) {
     var snackBody: List<Position>? = null
     var apple: Position? = null
     var size: Int = 0
-    val gap = 3
+    val gap = 10
     private val paint = Paint().apply { color = Color.BLACK }
     private val paintApple = Paint().apply { color = Color.RED }
 

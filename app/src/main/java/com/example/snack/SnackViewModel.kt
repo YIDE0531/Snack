@@ -35,7 +35,7 @@ class SnackViewModel: ViewModel() {
                     Direction.TOP -> y--
                     Direction.DOWN -> y++
                 }
-                if(snackBody.contains(this)||x<=0||x>=20||y<=0||y>=20){
+                if(snackBody.contains(this)||x<0||x>=20||y<0||y>=20){
                     cancel()
                     gameState.postValue(GameState.GAME_OVER)
                 }
