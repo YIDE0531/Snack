@@ -21,8 +21,8 @@ android {
         applicationId "com.nuu.snack"
         minSdkVersion 21
         targetSdkVersion 30
-        versionCode 1
-        versionName "1.0"
+        versionCode 3   //  google play, 阻止使用者降級安裝比較舊的版本
+        versionName "3"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +65,7 @@ dependencies {
     implementation "androidx.room:room-common:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
 
+    implementation 'com.google.android.gms:play-services-ads:19.6.0'
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
