@@ -1,5 +1,6 @@
 package com.example.snack
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -8,16 +9,21 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.observe
+import com.firebase.ui.auth.AuthUI
 import com.google.android.gms.ads.*
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.android.synthetic.main.content_main.*
 
 
 class MainActivity : AppCompatActivity() {
+    private val RC_SIGNIN: Int = 100
+    private val auth = FirebaseAuth.getInstance()
     private lateinit var viewModel: SnackViewModel
     private lateinit var mInterstitialAd: InterstitialAd
     private lateinit var mAdView: AdView
-    private val appConfig = AppConfig().instance
+    private val appConfig = AppConfig.instance
+    private val TAG = MainActivity::class.java.simpleName
+    private lateinit var dialog: AlertDialog
 
     @ExperimentalStdlibApi
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,9 +31,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         setSupportActionBar(findViewById(R.id.toolbar))
 
-        interstitialAdInit()    //  插頁式廣告
-        bannerAdInit()  //  橫幅廣告
+        checkLogin()
+    }
 
+    @ExperimentalStdlibApi
+    private fun startGame(){
         viewModel = ViewModelProvider(this).get(SnackViewModel::class.java)
         viewModel.body.observe(this) {
             game_view.snackBody = it
@@ -43,36 +51,25 @@ class MainActivity : AppCompatActivity() {
         viewModel.gameState.observe(this) {
             if(it == GameState.GAME_OVER){
                 AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Game")
-                        .setMessage("Game Over")
-                        .setPositiveButton("OK"){_, _ ->
-                            mInterstitialAd.show()
-                        }
-                        .show()
+                    .setTitle("Game")
+                    .setMessage("Game Over")
+                    .setPositiveButton("OK"){_, _ ->
+                        mInterstitialAd.show()
+                    }
+                    .show()
             }
         }
-
-//        findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { view ->
-////            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-////                    .setAction("Action", null).show()
-//            viewModel.reset()
-//        }
         viewModel.start()
         imb_top.setOnClickListener { viewModel.move(Direction.TOP) }
         imb_left.setOnClickListener { viewModel.move(Direction.LEFT) }
         imb_right.setOnClickListener { viewModel.move(Direction.RIGHT) }
         imb_bottom.setOnClickListener { viewModel.move(Direction.DOWN) }
-
     }
 
     private fun bannerAdInit(){
         mAdView = AdView(this)
         mAdView.adSize = AdSize.BANNER
-        mAdView.adUnitId = if(appConfig.target == Target.PROD){
-            "ca-app-pub-9136945281854153/6833482996"
-        }else {
-            "ca-app-pub-3940256099942544/6300978111"
-        }
+        mAdView.adUnitId = appConfig.getBannerAdUnitId()
         ll_adView.addView(mAdView)
         mAdView.loadAd(AdRequest.Builder().build())
     }
@@ -83,11 +80,7 @@ class MainActivity : AppCompatActivity() {
         // test:    ca-app-pub-3940256099942544/1033173712
         // prod:    ca-app-pub-9136945281854153/6318477670
 
-        mInterstitialAd.adUnitId = if(appConfig.target == Target.PROD){
-            "ca-app-pub-9136945281854153/6318477670"
-        }else {
-            "ca-app-pub-3940256099942544/1033173712"
-        }
+        mInterstitialAd.adUnitId = appConfig.getInterstitialAdUnitId()
         mInterstitialAd.loadAd(AdRequest.Builder().build())
         mInterstitialAd.adListener = object: AdListener() {
             override fun onAdLoaded() {
@@ -118,6 +111,91 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    @ExperimentalStdlibApi
+    private fun checkLogin(){
+        auth.addAuthStateListener {
+            if(auth.currentUser == null) {
+                val auth = AuthUI.getInstance()
+                    .createSignInIntentBuilder()
+                    .setAvailableProviders(
+                        listOf(
+                            AuthUI.IdpConfig.EmailBuilder().build(),
+                            AuthUI.IdpConfig.GoogleBuilder().build()
+//                            AuthUI.IdpConfig.FacebookBuilder().build()
+                        )
+                    )
+                    .setIsSmartLockEnabled(false)
+                    .setLogo(R.mipmap.ic_launcher)
+                    .build()
+                startActivityForResult(auth, RC_SIGNIN)
+            }else{
+                if(auth.currentUser!!.isEmailVerified) {
+                    tv_email.text = "HI! ${auth.currentUser?.email}"
+                    interstitialAdInit()    //  插頁式廣告
+                    bannerAdInit()  //  橫幅廣告
+                    startGame()
+                }else{
+                    dialog = setProgressDialog(this, "請先到信箱確認信件")
+                    dialog.show()
+                }
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if(requestCode == RC_SIGNIN){
+            if(resultCode == RESULT_OK){
+                tv_email.text = "HI! ${auth.currentUser?.email}"
+                if(!auth.currentUser!!.isEmailVerified) {
+                    AlertDialog.Builder(this)
+                        .setTitle("系統訊息")
+                        .setMessage("須先驗證電子信箱才可以進行遊玩")
+                        .setPositiveButton("確認") { _, _ ->
+                            auth.currentUser?.sendEmailVerification()
+                                ?.addOnCompleteListener { task ->
+                                    if (task.isSuccessful) {
+                                        Toast.makeText(this@MainActivity, "Verify Email Sent", Toast.LENGTH_SHORT).show()
+                                        dialog.show()
+                                    } else {
+                                        Toast.makeText(this@MainActivity, "Error", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+            }
+        }
+    }
+
+//    override fun onAuthStateChanged(auth: FirebaseAuth) {
+//        val user = auth.currentUser
+//        if(user!=null) {
+//            tv_email.text = "HI! ${user?.email}"
+//            if(!user.isEmailVerified){
+//                AlertDialog.Builder(this)
+//                    .setTitle("系統訊息")
+//                    .setMessage("須先驗證電子信箱才可以進行遊玩")
+//                    .setPositiveButton("確認"){_, _ ->
+//                        FirebaseAuth.getInstance()
+//                            .currentUser?.sendEmailVerification()?.addOnCompleteListener {task ->
+//                                if(task.isSuccessful){
+//                                    Toast.makeText(this@MainActivity, "Verify Email Sent", Toast.LENGTH_SHORT).show()
+//                                }else{
+//                                    Toast.makeText(this@MainActivity, "Error", Toast.LENGTH_SHORT).show()
+//                                }
+//                            }
+//                    }
+//                    .setCancelable(false)
+//                    .show()
+//            }
+//        }else{
+//            tv_email.text = "Go Verify"
+//        }
+//    }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
