@@ -13,6 +13,10 @@ import com.firebase.ui.auth.AuthUI
 import com.google.android.gms.ads.*
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.android.synthetic.main.content_main.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 class MainActivity : AppCompatActivity() {
@@ -35,35 +39,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     @ExperimentalStdlibApi
-    private fun startGame(){
-        viewModel = ViewModelProvider(this).get(SnackViewModel::class.java)
-        viewModel.body.observe(this) {
-            game_view.snackBody = it
-            game_view.invalidate()
-        }
-        viewModel.apple.observe(this) {
-            game_view.apple = it
-            game_view.invalidate()
-        }
-        viewModel.score.observe(this) {
-            tv_score.text = it.toString()
-        }
-        viewModel.gameState.observe(this) {
-            if(it == GameState.GAME_OVER){
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Game")
-                    .setMessage("Game Over")
-                    .setPositiveButton("OK"){_, _ ->
-                        mInterstitialAd.show()
-                    }
-                    .show()
+    private fun checkLogin(){
+        auth.addAuthStateListener {
+            if(auth.currentUser == null) {
+                val auth = AuthUI.getInstance()
+                    .createSignInIntentBuilder()
+                    .setAvailableProviders(
+                        listOf(
+                            AuthUI.IdpConfig.EmailBuilder().build(),
+                            AuthUI.IdpConfig.GoogleBuilder().build()
+//                            AuthUI.IdpConfig.FacebookBuilder().build()
+                        )
+                    )
+                    .setIsSmartLockEnabled(false)
+                    .setLogo(R.mipmap.ic_launcher)
+                    .build()
+                startActivityForResult(auth, RC_SIGNIN)
+            }else{
+                if(auth.currentUser!!.isEmailVerified) {
+                    tv_email.text = "HI! ${auth.currentUser?.email}"
+                    interstitialAdInit()    //  插頁式廣告
+                    bannerAdInit()  //  橫幅廣告
+                    startGame()
+                }else{
+                    verifyEmailListener()
+                }
             }
         }
-        viewModel.start()
-        imb_top.setOnClickListener { viewModel.move(Direction.TOP) }
-        imb_left.setOnClickListener { viewModel.move(Direction.LEFT) }
-        imb_right.setOnClickListener { viewModel.move(Direction.RIGHT) }
-        imb_bottom.setOnClickListener { viewModel.move(Direction.DOWN) }
     }
 
     private fun bannerAdInit(){
@@ -113,36 +115,73 @@ class MainActivity : AppCompatActivity() {
     }
 
     @ExperimentalStdlibApi
-    private fun checkLogin(){
-        auth.addAuthStateListener {
-            if(auth.currentUser == null) {
-                val auth = AuthUI.getInstance()
-                    .createSignInIntentBuilder()
-                    .setAvailableProviders(
-                        listOf(
-                            AuthUI.IdpConfig.EmailBuilder().build(),
-                            AuthUI.IdpConfig.GoogleBuilder().build()
-//                            AuthUI.IdpConfig.FacebookBuilder().build()
-                        )
-                    )
-                    .setIsSmartLockEnabled(false)
-                    .setLogo(R.mipmap.ic_launcher)
-                    .build()
-                startActivityForResult(auth, RC_SIGNIN)
-            }else{
-                if(auth.currentUser!!.isEmailVerified) {
-                    tv_email.text = "HI! ${auth.currentUser?.email}"
-                    interstitialAdInit()    //  插頁式廣告
-                    bannerAdInit()  //  橫幅廣告
-                    startGame()
-                }else{
-                    dialog = setProgressDialog(this, "請先到信箱確認信件")
-                    dialog.show()
-                }
+    private fun startGame(){
+        viewModel = ViewModelProvider(this).get(SnackViewModel::class.java)
+        viewModel.body.observe(this) {
+            game_view.snackBody = it
+            game_view.invalidate()
+        }
+        viewModel.apple.observe(this) {
+            game_view.apple = it
+            game_view.invalidate()
+        }
+        viewModel.score.observe(this) {
+            tv_score.text = it.toString()
+        }
+        viewModel.gameState.observe(this) {
+            if(it == GameState.GAME_OVER){
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Game")
+                    .setMessage("Game Over")
+                    .setPositiveButton("OK"){_, _ ->
+                        mInterstitialAd.show()
+                    }
+                    .show()
+            }
+        }
+        viewModel.start()
+        imb_top.setOnClickListener { viewModel.move(Direction.TOP) }
+        imb_left.setOnClickListener { viewModel.move(Direction.LEFT) }
+        imb_right.setOnClickListener { viewModel.move(Direction.RIGHT) }
+        imb_bottom.setOnClickListener { viewModel.move(Direction.DOWN) }
+    }
+
+    @ExperimentalStdlibApi
+    private fun verifyEmailListener(){
+        dialog = setProgressDialog(this, "請先到信箱確認信件後才可進行遊玩")
+        dialog.show()
+        CoroutineScope(Dispatchers.IO).launch{
+            while(!auth.currentUser!!.isEmailVerified){
+                auth.currentUser!!.reload()
+                Thread.sleep(1000)
+            }
+            withContext(Dispatchers.Main) {
+                dialog.cancel()
+                tv_email.text = "HI! ${auth.currentUser?.email}"
+                interstitialAdInit()    //  插頁式廣告
+                bannerAdInit()  //  橫幅廣告
+                startGame()
             }
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    @ExperimentalStdlibApi
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_restart -> {
+                viewModel.reset()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    @ExperimentalStdlibApi
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -158,9 +197,8 @@ class MainActivity : AppCompatActivity() {
                                 ?.addOnCompleteListener { task ->
                                     if (task.isSuccessful) {
                                         Toast.makeText(this@MainActivity, "Verify Email Sent", Toast.LENGTH_SHORT).show()
-                                        dialog.show()
                                     } else {
-                                        Toast.makeText(this@MainActivity, "Error", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(this@MainActivity, "Verify Email Error", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                         }
@@ -168,48 +206,6 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             }
-        }
-    }
-
-//    override fun onAuthStateChanged(auth: FirebaseAuth) {
-//        val user = auth.currentUser
-//        if(user!=null) {
-//            tv_email.text = "HI! ${user?.email}"
-//            if(!user.isEmailVerified){
-//                AlertDialog.Builder(this)
-//                    .setTitle("系統訊息")
-//                    .setMessage("須先驗證電子信箱才可以進行遊玩")
-//                    .setPositiveButton("確認"){_, _ ->
-//                        FirebaseAuth.getInstance()
-//                            .currentUser?.sendEmailVerification()?.addOnCompleteListener {task ->
-//                                if(task.isSuccessful){
-//                                    Toast.makeText(this@MainActivity, "Verify Email Sent", Toast.LENGTH_SHORT).show()
-//                                }else{
-//                                    Toast.makeText(this@MainActivity, "Error", Toast.LENGTH_SHORT).show()
-//                                }
-//                            }
-//                    }
-//                    .setCancelable(false)
-//                    .show()
-//            }
-//        }else{
-//            tv_email.text = "Go Verify"
-//        }
-//    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
-    }
-
-    @ExperimentalStdlibApi
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_restart -> {
-                viewModel.reset()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
         }
     }
 }
