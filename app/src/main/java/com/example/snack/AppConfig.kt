@@ -2,7 +2,7 @@ package com.example.snack
 
 class AppConfig {
     companion object {
-        private val target = Target.DEV
+        private val target = Target.PROD
         val instance by lazy {
             AppConfig()
         }

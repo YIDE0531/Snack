@@ -22,8 +22,8 @@ android {
         applicationId "com.nuu.snack"
         minSdkVersion 21
         targetSdkVersion 30
-        versionCode 3   //  google play, 阻止使用者降級安裝比較舊的版本
-        versionName "3"
+        versionCode 4   //  google play, 阻止使用者降級安裝比較舊的版本
+        versionName "4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
